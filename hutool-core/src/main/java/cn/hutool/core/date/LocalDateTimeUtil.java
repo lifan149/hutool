@@ -1,16 +1,23 @@
 package cn.hutool.core.date;
 
+import cn.hutool.core.date.format.GlobalCustomFormat;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.ReUtil;
+import cn.hutool.core.util.StrUtil;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.Period;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAccessor;
 import java.time.temporal.TemporalUnit;
 import java.util.Date;
@@ -133,7 +140,7 @@ public class LocalDateTimeUtil {
 	 * 毫秒转{@link LocalDateTime}，结果会产生时间偏移
 	 *
 	 * @param epochMilli 从1970-01-01T00:00:00Z开始计数的毫秒数
-	 * @param timeZone     时区
+	 * @param timeZone   时区
 	 * @return {@link LocalDateTime}
 	 */
 	public static LocalDateTime of(long epochMilli, TimeZone timeZone) {
@@ -168,8 +175,8 @@ public class LocalDateTimeUtil {
 			return null;
 		}
 
-		if(temporalAccessor instanceof LocalDate){
-			return ((LocalDate)temporalAccessor).atStartOfDay();
+		if (temporalAccessor instanceof LocalDate) {
+			return ((LocalDate) temporalAccessor).atStartOfDay();
 		}
 
 		return LocalDateTime.of(
@@ -195,8 +202,8 @@ public class LocalDateTimeUtil {
 			return null;
 		}
 
-		if(temporalAccessor instanceof LocalDateTime){
-			return ((LocalDateTime)temporalAccessor).toLocalDate();
+		if (temporalAccessor instanceof LocalDateTime) {
+			return ((LocalDateTime) temporalAccessor).toLocalDate();
 		}
 
 		return LocalDate.of(
@@ -209,11 +216,11 @@ public class LocalDateTimeUtil {
 	/**
 	 * 解析日期时间字符串为{@link LocalDateTime}，仅支持yyyy-MM-dd'T'HH:mm:ss格式，例如：2007-12-03T10:15:30
 	 *
-	 * @param text      日期时间字符串
+	 * @param text 日期时间字符串
 	 * @return {@link LocalDateTime}
 	 */
 	public static LocalDateTime parse(CharSequence text) {
-		return parse(text, (DateTimeFormatter)null);
+		return parse(text, (DateTimeFormatter) null);
 	}
 
 	/**
@@ -245,18 +252,44 @@ public class LocalDateTimeUtil {
 		if (null == text) {
 			return null;
 		}
-		return parse(text, DateTimeFormatter.ofPattern(format));
+
+		if(GlobalCustomFormat.isCustomFormat(format)){
+			return of(GlobalCustomFormat.parse(text, format));
+		}
+
+		DateTimeFormatter formatter = null;
+		if (StrUtil.isNotBlank(format)) {
+			// 修复yyyyMMddHHmmssSSS格式不能解析的问题
+			// fix issue#1082
+			//see https://stackoverflow.com/questions/22588051/is-java-time-failing-to-parse-fraction-of-second
+			// jdk8 bug at: https://bugs.openjdk.java.net/browse/JDK-8031085
+			if (StrUtil.startWithIgnoreEquals(format, DatePattern.PURE_DATETIME_PATTERN)) {
+				final String fraction = StrUtil.removePrefix(format, DatePattern.PURE_DATETIME_PATTERN);
+				if (ReUtil.isMatch("[S]{1,2}", fraction)) {
+					//将yyyyMMddHHmmssS、yyyyMMddHHmmssSS的日期统一替换为yyyyMMddHHmmssSSS格式，用0补
+					text += StrUtil.repeat('0', 3 - fraction.length());
+				}
+				formatter = new DateTimeFormatterBuilder()
+						.appendPattern(DatePattern.PURE_DATETIME_PATTERN)
+						.appendValue(ChronoField.MILLI_OF_SECOND, 3)
+						.toFormatter();
+			} else {
+				formatter = DateTimeFormatter.ofPattern(format);
+			}
+		}
+
+		return parse(text, formatter);
 	}
 
 	/**
 	 * 解析日期时间字符串为{@link LocalDate}，仅支持yyyy-MM-dd'T'HH:mm:ss格式，例如：2007-12-03T10:15:30
 	 *
-	 * @param text      日期时间字符串
+	 * @param text 日期时间字符串
 	 * @return {@link LocalDate}
 	 * @since 5.3.10
 	 */
 	public static LocalDate parseDate(CharSequence text) {
-		return parseDate(text, (DateTimeFormatter)null);
+		return parseDate(text, (DateTimeFormatter) null);
 	}
 
 	/**
@@ -293,6 +326,17 @@ public class LocalDateTimeUtil {
 	}
 
 	/**
+	 * 格式化日期时间为yyyy-MM-dd HH:mm:ss格式
+	 *
+	 * @param time {@link LocalDateTime}
+	 * @return 格式化后的字符串
+	 * @since 5.3.11
+	 */
+	public static String formatNormal(LocalDateTime time) {
+		return format(time, DatePattern.NORM_DATETIME_FORMATTER);
+	}
+
+	/**
 	 * 格式化日期时间为指定格式
 	 *
 	 * @param time      {@link LocalDateTime}
@@ -311,10 +355,18 @@ public class LocalDateTimeUtil {
 	 * @return 格式化后的字符串
 	 */
 	public static String format(LocalDateTime time, String format) {
-		if (null == time) {
-			return null;
-		}
-		return format(time, DateTimeFormatter.ofPattern(format));
+		return TemporalAccessorUtil.format(time, format);
+	}
+
+	/**
+	 * 格式化日期时间为yyyy-MM-dd格式
+	 *
+	 * @param date {@link LocalDate}
+	 * @return 格式化后的字符串
+	 * @since 5.3.11
+	 */
+	public static String formatNormal(LocalDate date) {
+		return format(date, DatePattern.NORM_DATE_FORMATTER);
 	}
 
 	/**
@@ -349,7 +401,7 @@ public class LocalDateTimeUtil {
 	 *
 	 * @param time   {@link LocalDateTime}
 	 * @param number 偏移量，正数为向后偏移，负数为向前偏移
-	 * @param field  偏移单位，见{@link ChronoField}，不能为null
+	 * @param field  偏移单位，见{@link ChronoUnit}，不能为null
 	 * @return 偏移后的日期时间
 	 */
 	public static LocalDateTime offset(LocalDateTime time, long number, TemporalUnit field) {
@@ -365,14 +417,43 @@ public class LocalDateTimeUtil {
 	 * <p>
 	 * 返回结果为{@link Duration}对象，通过调用toXXX方法返回相差单位
 	 *
-	 * @param startTime 开始时间
-	 * @param endTime   结束时间
+	 * @param startTimeInclude 开始时间（包含）
+	 * @param endTimeExclude   结束时间（不包含）
 	 * @return 时间差 {@link Duration}对象
+	 * @see TemporalUtil#between(Temporal, Temporal)
 	 */
-	public static Duration between(LocalDateTime startTime, LocalDateTime endTime) {
-		return Duration.between(startTime, endTime);
+	public static Duration between(LocalDateTime startTimeInclude, LocalDateTime endTimeExclude) {
+		return TemporalUtil.between(startTimeInclude, endTimeExclude);
 	}
 
+	/**
+	 * 获取两个日期的差，如果结束时间早于开始时间，获取结果为负。
+	 * <p>
+	 * 返回结果为时间差的long值
+	 *
+	 * @param startTimeInclude 开始时间（包括）
+	 * @param endTimeExclude   结束时间（不包括）
+	 * @param unit             时间差单位
+	 * @return 时间差
+	 * @since 5.4.5
+	 */
+	public static long between(LocalDateTime startTimeInclude, LocalDateTime endTimeExclude, ChronoUnit unit) {
+		return TemporalUtil.between(startTimeInclude, endTimeExclude, unit);
+	}
+
+	/**
+	 * 获取两个日期的表象时间差，如果结束时间早于开始时间，获取结果为负。
+	 * <p>
+	 * 比如2011年2月1日，和2021年8月11日，日相差了10天，月相差6月
+	 *
+	 * @param startTimeInclude 开始时间（包括）
+	 * @param endTimeExclude   结束时间（不包括）
+	 * @return 时间差
+	 * @since 5.4.5
+	 */
+	public static Period betweenPeriod(LocalDate startTimeInclude, LocalDate endTimeExclude) {
+		return Period.between(startTimeInclude, endTimeExclude);
+	}
 
 	/**
 	 * 修改为一天的开始时间，例如：2020-02-02 00:00:00,000
@@ -381,7 +462,7 @@ public class LocalDateTimeUtil {
 	 * @return 一天的开始时间
 	 */
 	public static LocalDateTime beginOfDay(LocalDateTime time) {
-		return time.with(LocalTime.of(0, 0, 0, 0));
+		return time.with(LocalTime.MIN);
 	}
 
 	/**
@@ -391,6 +472,18 @@ public class LocalDateTimeUtil {
 	 * @return 一天的结束时间
 	 */
 	public static LocalDateTime endOfDay(LocalDateTime time) {
-		return time.with(LocalTime.of(23, 59, 59, 999_999_999));
+		return time.with(LocalTime.MAX);
+	}
+
+	/**
+	 * {@link TemporalAccessor}转换为 时间戳（从1970-01-01T00:00:00Z开始的毫秒数）
+	 *
+	 * @param temporalAccessor Date对象
+	 * @return {@link Instant}对象
+	 * @see TemporalAccessorUtil#toEpochMilli(TemporalAccessor)
+	 * @since 5.4.1
+	 */
+	public static long toEpochMilli(TemporalAccessor temporalAccessor) {
+		return TemporalAccessorUtil.toEpochMilli(temporalAccessor);
 	}
 }

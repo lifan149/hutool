@@ -349,7 +349,7 @@ public class JSONTokener {
 		this.back();
 
 		string = sb.toString().trim();
-		if ("".equals(string)) {
+		if (0 == string.length()) {
 			throw this.syntaxError("Missing value");
 		}
 		return InternalJSONUtil.stringToValue(string);
@@ -393,7 +393,7 @@ public class JSONTokener {
 	 * @return A JSONException object, suitable for throwing
 	 */
 	public JSONException syntaxError(String message) {
-		return new JSONException(message + this.toString());
+		return new JSONException(message + this);
 	}
 
 	/**

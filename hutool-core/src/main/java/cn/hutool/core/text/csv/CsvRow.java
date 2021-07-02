@@ -24,7 +24,7 @@ public final class CsvRow implements List<String> {
 
 	/**
 	 * 构造
-	 * 
+	 *
 	 * @param originalLineNumber 对应文件中的第几行
 	 * @param headerMap 标题Map
 	 * @param fields 数据列表
@@ -107,7 +107,7 @@ public final class CsvRow implements List<String> {
 	 * @since 5.3.6
 	 */
 	public <T> T toBean(Class<T> clazz){
-		return BeanUtil.mapToBean(getFieldMap(), clazz, true);
+		return BeanUtil.toBeanIgnoreError(getFieldMap(), clazz);
 	}
 
 	/**
